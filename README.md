@@ -74,8 +74,6 @@ A simple, static theme picker for Neovim. Browse all available colorschemes in a
 5. Previews themes as you navigate (j/k)
 6. Apply with Enter
 
-The list never scrolls weirdly - the text stays put and only the highlight moves! Use search (`/`) to quickly find themes in a large list.
-
 ### Background Toggle (`<leader>tb`)
 
 Toggles between two background modes:
@@ -91,4 +89,4 @@ Toggles between two background modes:
 
 ### Persistence
 
-Your theme and background choices are automatically saved to `~/.local/share/nvim/theme_switcher_prefs.json` and restored when you restart nvim. No need to configure anything - it just works!
+Your theme and background choices are automatically saved to `~/.local/share/nvim/theme_switcher_prefs.json` and restored when you restart nvim.
