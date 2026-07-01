@@ -5,6 +5,9 @@ M.config = {
   width = 40,
   height = 20,
   border = "rounded",
+  -- Background used when there's no saved preference yet.
+  -- "normal" = theme's own bg, "terminal" = transparent, "blackout" = pure black.
+  default_bg = "normal",
 }
 
 M.state = {
@@ -47,30 +50,38 @@ local function save_preferences()
   vim.fn.writefile({ vim.fn.json_encode(prefs) }, prefs_file)
 end
 
+-- Re-apply the current background mode (used on startup and after any
+-- colorscheme change so blackout/terminal survive theme switches).
+local function reapply_bg()
+  if M.state.bg_mode == "blackout" then
+    apply_black_bg()
+  elseif M.state.bg_mode == "terminal" then
+    apply_terminal_bg()
+  end
+  -- "normal": nothing to do, the theme owns its background.
+end
+
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 
-  -- Load and apply saved preferences
+  -- Load saved preference, falling back to the configured default.
   local prefs = load_preferences()
-  if prefs then
-    M.state.bg_mode = prefs.bg_mode or "normal"
+  M.state.bg_mode = (prefs and prefs.bg_mode) or M.config.default_bg or "normal"
 
-    -- Apply saved theme and background after a short delay to let plugins load
-    vim.defer_fn(function()
-      if prefs.theme then
-        -- Just load the theme naturally
-        pcall(vim.cmd.colorscheme, prefs.theme)
+  -- Keep the background mode applied across colorscheme changes (theme picker,
+  -- plugins re-setting the theme, etc.).
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("nana_theme_switcher_bg", { clear = true }),
+    callback = reapply_bg,
+  })
 
-        -- Apply background mode if needed
-        if M.state.bg_mode == "terminal" then
-          apply_terminal_bg()
-        elseif M.state.bg_mode == "blackout" then
-          apply_black_bg()
-        end
-        -- normal mode: do nothing, let theme handle its own background
-      end
-    end, 100)
-  end
+  -- Apply saved theme + background after a short delay to let plugins load.
+  vim.defer_fn(function()
+    if prefs and prefs.theme then
+      pcall(vim.cmd.colorscheme, prefs.theme)
+    end
+    reapply_bg()
+  end, 100)
 end
 
 -- Get all available colorschemes
@@ -402,39 +413,26 @@ end
 
 -- Apply pure black background
 apply_black_bg = function()
-  -- Force pure black background on UI groups only
-  -- IMPORTANT: Only modify UI background groups, NOT text/syntax groups
+  -- Pure black background while KEEPING each group's foreground (text) colour.
+  -- Only UI/background groups are touched; syntax/text groups are left alone so
+  -- the theme's colours still render on black.
   local black_groups = {
-    "Normal",
-    "NormalFloat",
-    "NormalNC",
-    "SignColumn",
-    "EndOfBuffer",
-    "LineNr",
-    "LineNrAbove",
-    "LineNrBelow",
-    "CursorLineNr",
-    "Folded",
-    "FoldColumn",
-    "NonText",
-    "VertSplit",
-    "WinSeparator",
-    "StatusLine",
-    "StatusLineNC",
-    "TabLine",
-    "TabLineFill",
-    "TabLineSel",
-    "NormalSB",
-    -- Dashboard/Snacks specific
-    "SnacksDashboardNormal",
-    "SnacksDashboardFooter",
+    "Normal", "NormalNC", "NormalSB", "NormalFloat", "FloatBorder",
+    "SignColumn", "EndOfBuffer", "NonText",
+    "LineNr", "LineNrAbove", "LineNrBelow", "CursorLineNr",
+    "Folded", "FoldColumn", "VertSplit", "WinSeparator",
+    "StatusLine", "StatusLineNC", "TabLine", "TabLineFill", "TabLineSel",
+    "Pmenu", "PmenuSbar",
+    -- neo-tree
+    "NeoTreeNormal", "NeoTreeNormalNC", "NeoTreeEndOfBuffer", "NeoTreeWinSeparator",
+    -- snacks dashboard
+    "SnacksDashboardNormal", "SnacksDashboardFooter",
   }
 
-  -- DO NOT touch: FloatBorder, Pmenu, notifications, or any syntax/text groups
   for _, group in ipairs(black_groups) do
-    -- Get existing highlight and preserve everything except bg
-    local hl = vim.api.nvim_get_hl(0, { name = group })
-    hl.bg = "#000000"  -- Set to black
+    -- link = false resolves linked groups so we get the real fg to preserve.
+    local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+    hl.bg = "#000000"
     hl.ctermbg = 0
     vim.api.nvim_set_hl(0, group, hl)
   end
@@ -442,34 +440,21 @@ end
 
 -- Apply terminal background (transparent)
 apply_terminal_bg = function()
-  -- Make background transparent to show terminal colors
+  -- Make background transparent to show the terminal's colours through.
   local transparent_groups = {
-    "Normal",
-    "NormalFloat",
-    "NormalNC",
-    "SignColumn",
-    "EndOfBuffer",
-    "LineNr",
-    "LineNrAbove",
-    "LineNrBelow",
-    "Folded",
-    "FoldColumn",
-    "NonText",
-    "VertSplit",
-    "WinSeparator",
-    "StatusLine",
-    "StatusLineNC",
-    "TabLine",
-    "TabLineFill",
-    "NormalSB",
-    -- Dashboard/Snacks specific
-    "SnacksDashboardNormal",
-    "SnacksDashboardFooter",
+    "Normal", "NormalNC", "NormalSB", "NormalFloat", "FloatBorder",
+    "SignColumn", "EndOfBuffer", "NonText",
+    "LineNr", "LineNrAbove", "LineNrBelow", "CursorLineNr",
+    "Folded", "FoldColumn", "VertSplit", "WinSeparator",
+    "StatusLine", "StatusLineNC", "TabLine", "TabLineFill", "TabLineSel",
+    "Pmenu", "PmenuSbar",
+    "NeoTreeNormal", "NeoTreeNormalNC", "NeoTreeEndOfBuffer", "NeoTreeWinSeparator",
+    "SnacksDashboardNormal", "SnacksDashboardFooter",
   }
 
   for _, group in ipairs(transparent_groups) do
-    local hl = vim.api.nvim_get_hl(0, { name = group })
-    hl.bg = "NONE"  -- Transparent
+    local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+    hl.bg = "NONE"
     hl.ctermbg = "NONE"
     vim.api.nvim_set_hl(0, group, hl)
   end
@@ -486,21 +471,14 @@ apply_theme_bg = function()
   end
 end
 
--- Toggle background mode (terminal <-> blackout only)
+-- Toggle between blackout (theme text colours on pure black) and the theme's
+-- own background. set_background() handles applying, persisting and notifying.
 function M.toggle_background()
-  if M.state.bg_mode == "terminal" then
-    -- Switch to blackout - force pure black
-    M.state.bg_mode = "blackout"
-    apply_black_bg()
-    vim.notify("Background: Blackout", vim.log.levels.INFO)
+  if M.state.bg_mode == "blackout" then
+    M.set_background("normal")
   else
-    -- Switch to terminal - transparent background
-    M.state.bg_mode = "terminal"
-    apply_terminal_bg()
-    vim.notify("Background: Terminal", vim.log.levels.INFO)
+    M.set_background("blackout")
   end
-  -- Save preferences after toggling
-  save_preferences()
 end
 
 -- Set background mode explicitly
