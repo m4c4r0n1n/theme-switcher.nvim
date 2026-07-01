@@ -1,3 +1,7 @@
+## UPDATES!!!
+
+I've fixed a few blackout issues on here, if you use this with another config other than Nananvim, let me know if you have any issues and I will do my best to resolve them. Thanks!
+
 # theme-switcher.nvim
 
 A simple, static theme picker for Neovim. Browse all available colorschemes in a floating window with a moving highlight.
