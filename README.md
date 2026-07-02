@@ -4,6 +4,9 @@ I've fixed a few blackout issues on here, if you use this with another config ot
 
 # theme-switcher.nvim
 
+<img width="1718" height="1400" alt="image" src="https://github.com/user-attachments/assets/4b81444e-592f-4682-b790-741d451df243" />
+
+
 A simple, static theme picker for Neovim. Browse all available colorschemes in a floating window with a moving highlight.
 
 ## Features
