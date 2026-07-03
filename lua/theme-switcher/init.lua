@@ -8,6 +8,8 @@ M.config = {
   -- Background used when there's no saved preference yet.
   -- "normal" = theme's own bg, "terminal" = transparent, "blackout" = pure black.
   default_bg = "normal",
+  -- Exact colorscheme names to hide from the picker (e.g. redundant variants).
+  exclude = {},
 }
 
 M.state = {
@@ -84,9 +86,20 @@ function M.setup(opts)
   end, 100)
 end
 
--- Get all available colorschemes
+-- Get all available colorschemes, minus any listed in config.exclude
+-- (used to drop redundant variants, e.g. rose-pine/rose-pine-main which
+-- collapse onto rose-pine-moon under blackout).
 local function get_colorschemes()
-  local colorschemes = vim.fn.getcompletion("", "color")
+  local hidden = {}
+  for _, name in ipairs(M.config.exclude or {}) do
+    hidden[name] = true
+  end
+  local colorschemes = {}
+  for _, name in ipairs(vim.fn.getcompletion("", "color")) do
+    if not hidden[name] then
+      table.insert(colorschemes, name)
+    end
+  end
   table.sort(colorschemes)
   return colorschemes
 end
