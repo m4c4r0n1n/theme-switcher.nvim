@@ -39,9 +39,15 @@ local function load_preferences()
   return nil
 end
 
+-- The name given to :colorscheme. Some themes (for example rose-pine) set one
+-- colors_name for all their variants, thus colors_name is not always correct.
+local function theme_name()
+  return M.state.current_theme or vim.g.colors_name
+end
+
 local function save_preferences()
   vim.fn.mkdir(vim.fn.fnamemodify(prefs_file, ":h"), "p")
-  local prefs = { theme = vim.g.colors_name, bg_mode = M.state.bg_mode }
+  local prefs = { theme = theme_name(), bg_mode = M.state.bg_mode }
   vim.fn.writefile({ vim.json.encode(prefs) }, prefs_file)
 end
 
@@ -132,7 +138,10 @@ end
 -- Each colorscheme change: record the theme background, then apply the mode.
 -- Plugins (for example lualine and bufferline) make their groups again after a
 -- colorscheme change. Thus apply the mode one more time after them.
-local function on_colorscheme()
+local function on_colorscheme(args)
+  if args and args.match and args.match ~= "" then
+    M.state.current_theme = args.match
+  end
   M.state.theme_bg = {
     normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false }).bg,
     float = vim.api.nvim_get_hl(0, { name = "NormalFloat", link = false }).bg,
@@ -162,7 +171,7 @@ function M.setup(opts)
   -- Apply the saved theme after the startup colorscheme. A schedule keeps the order
   -- and applies the theme before the first screen.
   vim.schedule(function()
-    if prefs and prefs.theme and prefs.theme ~= vim.g.colors_name then
+    if prefs and prefs.theme and prefs.theme ~= theme_name() then
       pcall(vim.cmd.colorscheme, prefs.theme)
     end
     if not M.state.theme_bg then
@@ -189,8 +198,8 @@ function M.set_background(mode)
   end
   M.state.bg_mode = mode
   -- Load the theme again. The ColorScheme autocommand applies the mode.
-  if vim.g.colors_name then
-    pcall(vim.cmd.colorscheme, vim.g.colors_name)
+  if theme_name() then
+    pcall(vim.cmd.colorscheme, theme_name())
   else
     on_colorscheme()
   end
@@ -411,7 +420,7 @@ function M.open()
 
   -- Start on the current theme.
   M.state.current_line = 1
-  local current = vim.g.colors_name or "default"
+  local current = theme_name() or "default"
   for i, theme in ipairs(M.state.filtered_themes) do
     if theme == current then
       M.state.current_line = i
