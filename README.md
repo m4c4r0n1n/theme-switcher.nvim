@@ -2,6 +2,14 @@
 
 I've fixed a few blackout issues on here, if you use this with another config other than Nananvim, let me know if you have any issues and I will do my best to resolve them. Thanks!
 
+Latest:
+- `j`, `k`, `G` and `q` work in the picker again
+- It remembers the exact variant you pick (rose-pine-dawn stays dawn after a restart)
+- No message on every move, only one when you apply a theme
+- Blackout now covers the tab line, statusline, popups and menus too
+- Your saved theme loads right away, no flash of the default theme on startup
+- No more error on the first save of a fresh install
+
 # theme-switcher.nvim
 
 <img width="1718" height="1400" alt="image" src="https://github.com/user-attachments/assets/4b81444e-592f-4682-b790-741d451df243" />
