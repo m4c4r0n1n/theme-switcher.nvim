@@ -1,14 +1,14 @@
--- theme-switcher.nvim - Static list theme picker
+-- theme-switcher.nvim: a static list theme picker with background modes.
 local M = {}
 
 M.config = {
   width = 40,
   height = 20,
   border = "rounded",
-  -- Background used when there's no saved preference yet.
-  -- "normal" = theme's own bg, "terminal" = transparent, "blackout" = pure black.
+  -- Background mode when no mode is saved: "normal" (theme background),
+  -- "terminal" (transparent) or "blackout" (pure black).
   default_bg = "normal",
-  -- Exact colorscheme names to hide from the picker (e.g. redundant variants).
+  -- Colorscheme names to hide from the picker.
   exclude = {},
 }
 
@@ -19,76 +19,188 @@ M.state = {
   filtered_themes = {},
   current_line = 1,
   current_theme = nil,
-  bg_mode = "normal", -- "normal", "terminal", or "blackout"
+  bg_mode = "normal", -- "normal", "terminal" or "blackout"
   search_query = "",
   search_mode = false,
+  -- Background colors of the theme before a mode changes them.
+  theme_bg = nil,
 }
 
--- Forward declarations (must be before M.setup)
-local apply_black_bg
-local apply_terminal_bg
-local apply_theme_bg
+local prefs_file = vim.fn.stdpath("data") .. "/theme_switcher_prefs.json"
 
--- Load saved preferences
 local function load_preferences()
-  local prefs_file = vim.fn.stdpath("data") .. "/theme_switcher_prefs.json"
-  if vim.fn.filereadable(prefs_file) == 1 then
-    local content = vim.fn.readfile(prefs_file)
-    local ok, data = pcall(vim.fn.json_decode, table.concat(content, "\n"))
-    if ok and type(data) == "table" then
-      return data
-    end
+  if vim.fn.filereadable(prefs_file) == 0 then
+    return nil
+  end
+  local ok, data = pcall(vim.json.decode, table.concat(vim.fn.readfile(prefs_file), "\n"))
+  if ok and type(data) == "table" then
+    return data
   end
   return nil
 end
 
--- Save current preferences
 local function save_preferences()
-  local prefs_file = vim.fn.stdpath("data") .. "/theme_switcher_prefs.json"
-  local prefs = {
-    theme = vim.g.colors_name,
-    bg_mode = M.state.bg_mode,
-  }
-  vim.fn.writefile({ vim.fn.json_encode(prefs) }, prefs_file)
+  vim.fn.mkdir(vim.fn.fnamemodify(prefs_file, ":h"), "p")
+  local prefs = { theme = vim.g.colors_name, bg_mode = M.state.bg_mode }
+  vim.fn.writefile({ vim.json.encode(prefs) }, prefs_file)
 end
 
--- Re-apply the current background mode (used on startup and after any
--- colorscheme change so blackout/terminal survive theme switches).
-local function reapply_bg()
-  if M.state.bg_mode == "blackout" then
-    apply_black_bg()
-  elseif M.state.bg_mode == "terminal" then
-    apply_terminal_bg()
+-- ── Background modes ────────────────────────────────────────────────────────
+
+-- Groups that show the editor background. Blackout and terminal modes change them.
+local bg_groups = {
+  "Normal",
+  "NormalNC",
+  "NormalSB",
+  "NormalFloat",
+  "FloatBorder",
+  "SignColumn",
+  "EndOfBuffer",
+  "NonText",
+  "LineNr",
+  "LineNrAbove",
+  "LineNrBelow",
+  "CursorLineNr",
+  "Folded",
+  "FoldColumn",
+  "VertSplit",
+  "WinSeparator",
+  "StatusLine",
+  "StatusLineNC",
+  "TabLine",
+  "TabLineFill",
+  "TabLineSel",
+  "Pmenu",
+  "PmenuSbar",
+  "NeoTreeNormal",
+  "NeoTreeNormalNC",
+  "NeoTreeEndOfBuffer",
+  "NeoTreeWinSeparator",
+  "SnacksDashboardNormal",
+  "SnacksDashboardFooter",
+}
+
+-- Popups often use the float background. A group with one of these words in its
+-- name gets the new background when its background is the float background.
+local popup_words = { "Normal", "Float", "Border", "Title", "Footer", "Pmenu", "Cmp", "WhichKey", "WinBar" }
+
+local function is_popup(name)
+  for _, word in ipairs(popup_words) do
+    if name:find(word, 1, true) then
+      return true
+    end
   end
-  -- "normal": nothing to do, the theme owns its background.
+  return false
 end
+
+-- Give a group a new background. Keep its text color.
+local function set_bg(name, bg, ctermbg)
+  local hl = vim.api.nvim_get_hl(0, { name = name, link = false })
+  hl.bg = bg
+  hl.ctermbg = ctermbg
+  vim.api.nvim_set_hl(0, name, hl)
+end
+
+-- Change the background groups and each group that uses the theme background.
+-- Do not change linked groups. They follow the group that they link to.
+local function paint(bg, ctermbg)
+  for _, name in ipairs(bg_groups) do
+    set_bg(name, bg, ctermbg)
+  end
+  local theme = M.state.theme_bg
+  if not theme then
+    return
+  end
+  for name, hl in pairs(vim.api.nvim_get_hl(0, {})) do
+    if hl.bg and not hl.link then
+      if hl.bg == theme.normal or (hl.bg == theme.float and is_popup(name)) then
+        set_bg(name, bg, ctermbg)
+      end
+    end
+  end
+end
+
+local function apply_mode()
+  if M.state.bg_mode == "blackout" then
+    paint("#000000", 0)
+  elseif M.state.bg_mode == "terminal" then
+    paint("NONE", "NONE")
+  end
+  -- "normal": the theme sets its own background.
+end
+
+-- Each colorscheme change: record the theme background, then apply the mode.
+-- Plugins (for example lualine and bufferline) make their groups again after a
+-- colorscheme change. Thus apply the mode one more time after them.
+local function on_colorscheme()
+  M.state.theme_bg = {
+    normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false }).bg,
+    float = vim.api.nvim_get_hl(0, { name = "NormalFloat", link = false }).bg,
+  }
+  apply_mode()
+  vim.schedule(apply_mode)
+end
+
+local augroup = vim.api.nvim_create_augroup("nana_theme_switcher_bg", { clear = true })
+vim.api.nvim_create_autocmd("ColorScheme", { group = augroup, callback = on_colorscheme })
+-- lazy.nvim loads many UI plugins on this event. Apply the mode again after them.
+vim.api.nvim_create_autocmd("User", {
+  group = augroup,
+  pattern = "VeryLazy",
+  once = true,
+  callback = function()
+    vim.schedule(apply_mode)
+  end,
+})
 
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 
-  -- Load saved preference, falling back to the configured default.
   local prefs = load_preferences()
   M.state.bg_mode = (prefs and prefs.bg_mode) or M.config.default_bg or "normal"
 
-  -- Keep the background mode applied across colorscheme changes (theme picker,
-  -- plugins re-setting the theme, etc.).
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    group = vim.api.nvim_create_augroup("nana_theme_switcher_bg", { clear = true }),
-    callback = reapply_bg,
-  })
-
-  -- Apply saved theme + background after a short delay to let plugins load.
-  vim.defer_fn(function()
-    if prefs and prefs.theme then
+  -- Apply the saved theme after the startup colorscheme. A schedule keeps the order
+  -- and applies the theme before the first screen.
+  vim.schedule(function()
+    if prefs and prefs.theme and prefs.theme ~= vim.g.colors_name then
       pcall(vim.cmd.colorscheme, prefs.theme)
     end
-    reapply_bg()
-  end, 100)
+    if not M.state.theme_bg then
+      on_colorscheme()
+    end
+  end)
 end
 
--- Get all available colorschemes, minus any listed in config.exclude
--- (used to drop redundant variants, e.g. rose-pine/rose-pine-main which
--- collapse onto rose-pine-moon under blackout).
+-- Toggle between blackout (theme text on pure black) and the theme background.
+function M.toggle_background()
+  if M.state.bg_mode == "blackout" then
+    M.set_background("normal")
+  else
+    M.set_background("blackout")
+  end
+end
+
+local mode_names = { normal = "Normal (Theme)", terminal = "Terminal", blackout = "Blackout" }
+
+function M.set_background(mode)
+  if not mode_names[mode] then
+    vim.notify("Invalid background mode. Use 'normal', 'terminal', or 'blackout'", vim.log.levels.ERROR)
+    return
+  end
+  M.state.bg_mode = mode
+  -- Load the theme again. The ColorScheme autocommand applies the mode.
+  if vim.g.colors_name then
+    pcall(vim.cmd.colorscheme, vim.g.colors_name)
+  else
+    on_colorscheme()
+  end
+  vim.notify("Background: " .. mode_names[mode], vim.log.levels.INFO)
+  save_preferences()
+end
+
+-- ── Picker ──────────────────────────────────────────────────────────────────
+
+-- All colorschemes, without the names in config.exclude.
 local function get_colorschemes()
   local hidden = {}
   for _, name in ipairs(M.config.exclude or {}) do
@@ -104,34 +216,28 @@ local function get_colorschemes()
   return colorschemes
 end
 
--- Filter themes based on search query
 local function filter_themes()
   if M.state.search_query == "" then
     M.state.filtered_themes = M.state.themes
   else
     M.state.filtered_themes = {}
-    local query_lower = M.state.search_query:lower()
+    local query = M.state.search_query:lower()
     for _, theme in ipairs(M.state.themes) do
-      if theme:lower():find(query_lower, 1, true) then
+      if theme:lower():find(query, 1, true) then
         table.insert(M.state.filtered_themes, theme)
       end
     end
   end
-
-  -- Reset selection to first item
   M.state.current_line = 1
 end
 
--- Render the static list with highlight on current line
 local function render_list()
-  if not M.state.buf or not vim.api.nvim_buf_is_valid(M.state.buf) then
+  local buf = M.state.buf
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
     return
   end
 
   local lines = {}
-  local display_themes = M.state.filtered_themes
-
-  -- Add search bar header
   if M.state.search_mode then
     table.insert(lines, "Search: " .. M.state.search_query .. "_")
   else
@@ -140,85 +246,75 @@ local function render_list()
   table.insert(lines, string.rep("─", 40))
   table.insert(lines, "")
 
-  -- Show filtered themes
-  if #display_themes == 0 then
+  if #M.state.filtered_themes == 0 then
     table.insert(lines, "  No themes found")
   else
-    for i, theme in ipairs(display_themes) do
-      local prefix = (i == M.state.current_line) and "> " or "  "
-      table.insert(lines, prefix .. theme)
+    for i, theme in ipairs(M.state.filtered_themes) do
+      table.insert(lines, ((i == M.state.current_line) and "> " or "  ") .. theme)
     end
   end
 
-  vim.api.nvim_buf_set_option(M.state.buf, "modifiable", true)
-  vim.api.nvim_buf_set_lines(M.state.buf, 0, -1, false, lines)
-  vim.api.nvim_buf_set_option(M.state.buf, "modifiable", false)
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
 
-  -- Set cursor to current line (offset by 3 for header)
+  -- The list starts after the 3 header lines.
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
-    vim.api.nvim_win_set_cursor(M.state.win, {M.state.current_line + 3, 0})
+    vim.api.nvim_win_set_cursor(M.state.win, { M.state.current_line + 3, 0 })
   end
 end
 
--- Apply the selected theme
-local function apply_theme(theme)
+-- Apply and save a theme. Show a message only when announce is true.
+local function apply_theme(theme, announce)
   if not theme then
     return
   end
-
   local ok, err = pcall(vim.cmd.colorscheme, theme)
-  if ok then
-    M.state.current_theme = theme
-    -- Save preferences
-    save_preferences()
-    vim.notify("Applied theme: " .. theme, vim.log.levels.INFO)
-  else
+  if not ok then
     vim.notify("Failed to apply theme: " .. theme .. "\n" .. tostring(err), vim.log.levels.ERROR)
+    return
+  end
+  M.state.current_theme = theme
+  save_preferences()
+  if announce then
+    vim.notify("Applied theme: " .. theme, vim.log.levels.INFO)
   end
 end
 
--- Preview theme without closing window
 local function preview_theme()
-  local theme = M.state.filtered_themes[M.state.current_line]
-  if theme then
-    apply_theme(theme)
-  end
+  apply_theme(M.state.filtered_themes[M.state.current_line], false)
 end
 
-
--- Move selection up
-local function move_up()
-  if M.state.current_line > 1 then
-    M.state.current_line = M.state.current_line - 1
-    render_list()
-    preview_theme()
+local function move_to(line)
+  local last = #M.state.filtered_themes
+  if last == 0 then
+    return
   end
+  line = math.max(1, math.min(line, last))
+  if line == M.state.current_line then
+    return
+  end
+  M.state.current_line = line
+  render_list()
+  preview_theme()
 end
 
--- Move selection down
 local function move_down()
-  if M.state.current_line < #M.state.filtered_themes then
-    M.state.current_line = M.state.current_line + 1
-    render_list()
-    preview_theme()
-  end
+  move_to(M.state.current_line + 1)
 end
 
--- Jump to top
+local function move_up()
+  move_to(M.state.current_line - 1)
+end
+
 local function jump_top()
-  M.state.current_line = 1
-  render_list()
-  preview_theme()
+  move_to(1)
 end
 
--- Jump to bottom
 local function jump_bottom()
-  M.state.current_line = #M.state.filtered_themes
-  render_list()
-  preview_theme()
+  move_to(#M.state.filtered_themes)
 end
 
--- Close the picker
 local function close_picker()
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
     vim.api.nvim_win_close(M.state.win, true)
@@ -227,42 +323,33 @@ local function close_picker()
   M.state.buf = nil
 end
 
--- Confirm selection and close
 local function confirm_selection()
-  local theme = M.state.filtered_themes[M.state.current_line]
-  if theme then
-    apply_theme(theme)
-  end
+  apply_theme(M.state.filtered_themes[M.state.current_line], true)
   close_picker()
 end
 
--- Enter search mode
 local function enter_search_mode()
   M.state.search_mode = true
   render_list()
 end
 
--- Exit search mode
 local function exit_search_mode()
   M.state.search_mode = false
   render_list()
 end
 
--- Clear search
 local function clear_search()
   M.state.search_query = ""
   filter_themes()
   render_list()
 end
 
--- Handle character input in search mode
-local function handle_search_char(char)
-  M.state.search_query = M.state.search_query .. char
+local function add_search_text(text)
+  M.state.search_query = M.state.search_query .. text
   filter_themes()
   render_list()
 end
 
--- Backspace in search mode
 local function search_backspace()
   if #M.state.search_query > 0 then
     M.state.search_query = M.state.search_query:sub(1, -2)
@@ -271,250 +358,103 @@ local function search_backspace()
   end
 end
 
--- Setup keymaps for the picker
+-- Each key has one mapping. It does the list action, or in search mode the
+-- search action.
 local function setup_keymaps()
-  if not M.state.buf or not vim.api.nvim_buf_is_valid(M.state.buf) then
-    return
+  local buf = M.state.buf
+  local function map(lhs, list_fn, search_fn, nowait)
+    vim.keymap.set("n", lhs, function()
+      if M.state.search_mode then
+        if search_fn then
+          search_fn()
+        end
+      elseif list_fn then
+        list_fn()
+      end
+    end, { buffer = buf, silent = true, nowait = nowait ~= false })
   end
 
-  local opts = { buffer = M.state.buf, silent = true, nowait = true }
-
-  -- Navigation (only when not in search mode)
-  vim.keymap.set("n", "j", function()
-    if not M.state.search_mode then move_down() end
-  end, opts)
-  vim.keymap.set("n", "k", function()
-    if not M.state.search_mode then move_up() end
-  end, opts)
-  vim.keymap.set("n", "<Down>", function()
-    if not M.state.search_mode then move_down() end
-  end, opts)
-  vim.keymap.set("n", "<Up>", function()
-    if not M.state.search_mode then move_up() end
-  end, opts)
-  vim.keymap.set("n", "gg", function()
-    if not M.state.search_mode then jump_top() end
-  end, opts)
-  vim.keymap.set("n", "G", function()
-    if not M.state.search_mode then jump_bottom() end
-  end, opts)
-
-  -- Selection
-  vim.keymap.set("n", "<CR>", function()
-    if M.state.search_mode then
-      exit_search_mode()
-    else
-      confirm_selection()
-    end
-  end, opts)
-  vim.keymap.set("n", "<Space>", function()
-    if not M.state.search_mode then confirm_selection() end
-  end, opts)
-
-  -- Preview (manual if needed)
-  vim.keymap.set("n", "p", function()
-    if not M.state.search_mode then preview_theme() end
-  end, opts)
-
-  -- Search
-  vim.keymap.set("n", "/", enter_search_mode, opts)
-  vim.keymap.set("n", "<BS>", function()
-    if M.state.search_mode then
-      search_backspace()
-    end
-  end, opts)
-
-  -- Clear search
-  vim.keymap.set("n", "<C-c>", clear_search, opts)
-
-  -- Close
-  vim.keymap.set("n", "q", function()
-    if not M.state.search_mode then close_picker() end
-  end, opts)
-  vim.keymap.set("n", "<Esc>", function()
-    if M.state.search_mode then
-      exit_search_mode()
-    else
-      close_picker()
-    end
-  end, opts)
-
-  -- Character input in search mode
+  -- Letters, digits, "-" and "_" type search text. Some letters are also list keys.
+  local list_keys = { j = move_down, k = move_up, G = jump_bottom, p = preview_theme, q = close_picker }
   local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
   for i = 1, #chars do
     local char = chars:sub(i, i)
-    vim.keymap.set("n", char, function()
-      if M.state.search_mode then
-        handle_search_char(char)
-      end
-    end, opts)
+    -- "g" waits for a second "g" (gg).
+    map(char, list_keys[char], function()
+      add_search_text(char)
+    end, char ~= "g")
   end
+  map("gg", jump_top, function()
+    add_search_text("gg")
+  end)
+
+  map("<Down>", move_down)
+  map("<Up>", move_up)
+  map("<CR>", confirm_selection, exit_search_mode)
+  map("<Space>", confirm_selection)
+  map("/", enter_search_mode, enter_search_mode)
+  map("<BS>", nil, search_backspace)
+  map("<C-c>", clear_search, clear_search)
+  map("<Esc>", close_picker, exit_search_mode)
 end
 
--- Open the theme picker
 function M.open()
-  -- Get all colorschemes
   M.state.themes = get_colorschemes()
-
   if #M.state.themes == 0 then
     vim.notify("No colorschemes found", vim.log.levels.WARN)
     return
   end
 
-  -- Initialize search state
   M.state.search_query = ""
   M.state.search_mode = false
   M.state.filtered_themes = M.state.themes
 
-  -- Find current theme in list
-  local current_colorscheme = vim.g.colors_name or "default"
+  -- Start on the current theme.
   M.state.current_line = 1
+  local current = vim.g.colors_name or "default"
   for i, theme in ipairs(M.state.filtered_themes) do
-    if theme == current_colorscheme then
+    if theme == current then
       M.state.current_line = i
       break
     end
   end
 
-  -- Create buffer
-  M.state.buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_option(M.state.buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(M.state.buf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(M.state.buf, "swapfile", false)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].swapfile = false
+  M.state.buf = buf
 
-  -- Calculate window size and position
   local width = math.min(M.config.width, vim.o.columns - 4)
   local height = math.min(M.config.height, #M.state.filtered_themes + 3, vim.o.lines - 4)
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-
-  -- Create floating window
-  M.state.win = vim.api.nvim_open_win(M.state.buf, true, {
+  M.state.win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
     width = width,
     height = height,
-    row = row,
-    col = col,
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
     style = "minimal",
     border = M.config.border,
     title = " nana-switcher ",
     title_pos = "center",
   })
 
-  -- Window options
-  vim.wo[M.state.win].number = false
-  vim.wo[M.state.win].relativenumber = false
-  vim.wo[M.state.win].cursorline = true
-  vim.wo[M.state.win].signcolumn = "no"
-  vim.wo[M.state.win].wrap = false
+  local wo = vim.wo[M.state.win]
+  wo.number = false
+  wo.relativenumber = false
+  wo.cursorline = true
+  wo.signcolumn = "no"
+  wo.wrap = false
 
-  -- Setup keymaps
   setup_keymaps()
-
-  -- Render initial list
   render_list()
 end
 
--- Toggle the picker
 function M.toggle()
   if M.state.win and vim.api.nvim_win_is_valid(M.state.win) then
     close_picker()
   else
     M.open()
-  end
-end
-
--- Apply pure black background
-apply_black_bg = function()
-  -- Pure black background while KEEPING each group's foreground (text) colour.
-  -- Only UI/background groups are touched; syntax/text groups are left alone so
-  -- the theme's colours still render on black.
-  local black_groups = {
-    "Normal", "NormalNC", "NormalSB", "NormalFloat", "FloatBorder",
-    "SignColumn", "EndOfBuffer", "NonText",
-    "LineNr", "LineNrAbove", "LineNrBelow", "CursorLineNr",
-    "Folded", "FoldColumn", "VertSplit", "WinSeparator",
-    "StatusLine", "StatusLineNC", "TabLine", "TabLineFill", "TabLineSel",
-    "Pmenu", "PmenuSbar",
-    -- neo-tree
-    "NeoTreeNormal", "NeoTreeNormalNC", "NeoTreeEndOfBuffer", "NeoTreeWinSeparator",
-    -- snacks dashboard
-    "SnacksDashboardNormal", "SnacksDashboardFooter",
-  }
-
-  for _, group in ipairs(black_groups) do
-    -- link = false resolves linked groups so we get the real fg to preserve.
-    local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
-    hl.bg = "#000000"
-    hl.ctermbg = 0
-    vim.api.nvim_set_hl(0, group, hl)
-  end
-end
-
--- Apply terminal background (transparent)
-apply_terminal_bg = function()
-  -- Make background transparent to show the terminal's colours through.
-  local transparent_groups = {
-    "Normal", "NormalNC", "NormalSB", "NormalFloat", "FloatBorder",
-    "SignColumn", "EndOfBuffer", "NonText",
-    "LineNr", "LineNrAbove", "LineNrBelow", "CursorLineNr",
-    "Folded", "FoldColumn", "VertSplit", "WinSeparator",
-    "StatusLine", "StatusLineNC", "TabLine", "TabLineFill", "TabLineSel",
-    "Pmenu", "PmenuSbar",
-    "NeoTreeNormal", "NeoTreeNormalNC", "NeoTreeEndOfBuffer", "NeoTreeWinSeparator",
-    "SnacksDashboardNormal", "SnacksDashboardFooter",
-  }
-
-  for _, group in ipairs(transparent_groups) do
-    local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
-    hl.bg = "NONE"
-    hl.ctermbg = "NONE"
-    vim.api.nvim_set_hl(0, group, hl)
-  end
-end
-
--- Restore theme's natural background
-apply_theme_bg = function()
-  -- Reload the colorscheme to restore its natural colors
-  local current_theme = vim.g.colors_name
-  if current_theme then
-    -- Reload the colorscheme directly (no hi clear needed - just reapply)
-    -- This properly restores the theme's original background and colors
-    pcall(vim.cmd.colorscheme, current_theme)
-  end
-end
-
--- Toggle between blackout (theme text colours on pure black) and the theme's
--- own background. set_background() handles applying, persisting and notifying.
-function M.toggle_background()
-  if M.state.bg_mode == "blackout" then
-    M.set_background("normal")
-  else
-    M.set_background("blackout")
-  end
-end
-
--- Set background mode explicitly
-function M.set_background(mode)
-  if mode == "normal" or mode == "terminal" or mode == "blackout" then
-    M.state.bg_mode = mode
-    if mode == "normal" then
-      -- Reload theme to restore natural background
-      apply_theme_bg()
-      vim.notify("Background: Normal (Theme)", vim.log.levels.INFO)
-    elseif mode == "terminal" then
-      -- Apply terminal transparent background
-      apply_terminal_bg()
-      vim.notify("Background: Terminal", vim.log.levels.INFO)
-    else
-      -- Apply blackout
-      apply_black_bg()
-      vim.notify("Background: Blackout", vim.log.levels.INFO)
-    end
-    -- Save preferences after setting
-    save_preferences()
-  else
-    vim.notify("Invalid background mode. Use 'normal', 'terminal', or 'blackout'", vim.log.levels.ERROR)
   end
 end
 

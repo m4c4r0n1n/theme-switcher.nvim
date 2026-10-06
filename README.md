@@ -16,38 +16,44 @@ A simple, static theme picker for Neovim. Browse all available colorschemes in a
 - **Search/filter**: Press `/` to filter themes by typing
 - **Live preview**: See themes as you navigate
 - **Fast navigation**: j/k, arrows, gg/G
-- **Background toggle**: Toggle between Normal and Blackout backgrounds
-- **Persistent**: Saves your theme and background choice - applies automatically on restart
+- **Background modes**: Blackout (theme text on pure black), the theme's own background, or transparent
+- **Persistent**: Saves your theme and background choice and applies them on restart
 - **Simple**: No dependencies, just works
 
 ## Installation
 
 ### lazy.nvim
 
+This is the spec [nananvim](https://github.com/m4c4r0n1n/nananvim) uses:
+
 ```lua
 {
-  "theme-switcher.nvim",
-  dir = vim.fn.expand("~/projects/theme-switcher.nvim"),
+  "m4c4r0n1n/theme-switcher.nvim",
+  lazy = false,
   config = function()
     require("theme-switcher").setup({
       width = 50,
       height = 25,
       border = "rounded", -- "rounded", "solid", "double", "none"
+      default_bg = "blackout", -- "normal", "terminal" or "blackout" (before you pick one)
+      exclude = {}, -- colorscheme names to hide, for example { "rose-pine-main" }
     })
   end,
   keys = {
     { "<leader>th", function() require("theme-switcher").toggle() end, desc = "Theme switcher" },
-    { "<leader>tb", function() require("theme-switcher").toggle_background() end, desc = "Toggle background (dark/light)" },
+    { "<leader>tb", function() require("theme-switcher").toggle_background() end, desc = "Toggle blackout / theme background" },
   },
 }
 ```
+
+Load it at startup (`lazy = false`). It applies your saved theme and background when Neovim starts.
 
 ## Usage
 
 ### Keybindings
 
 - `<leader>th` - Open the theme switcher (pick colorscheme)
-- `<leader>tb` - Cycle through backgrounds (Terminal → Themed → Blackout → ...)
+- `<leader>tb` - Toggle blackout and the theme's own background
 
 ### Inside the Theme Picker
 
@@ -67,8 +73,8 @@ A simple, static theme picker for Neovim. Browse all available colorschemes in a
 
 **Actions:**
 - `<Enter>` / `<Space>` - Apply theme and close
-- `p` - Preview theme (happens automatically on movement)
-- `q` / `<Esc>` - Close picker
+- `p` - Preview theme (moving the selection also previews)
+- `q` / `<Esc>` - Close picker (the previewed theme stays)
 
 ## How it works
 
@@ -81,18 +87,19 @@ A simple, static theme picker for Neovim. Browse all available colorschemes in a
 5. Previews themes as you navigate (j/k)
 6. Apply with Enter
 
-### Background Toggle (`<leader>tb`)
+### Background modes (`<leader>tb`)
 
-Toggles between two background modes:
-1. **Normal**: Let the theme use its natural background (might be transparent or colored)
-2. **Blackout**: Force pure black (#000000) background override
+1. **Blackout**: pure black (#000000) background with the theme's text colors
+2. **Normal**: the theme's own background
+3. **Terminal**: transparent, your terminal shows through
 
-**Note**: These are independent controls:
-- You can pick any theme with `<leader>th`
-- Press `<leader>tb` to toggle between Normal and Blackout
-- Blackout mode overrides any theme background with pure black
-- Normal mode lets each theme handle backgrounds naturally
-- Works with any theme!
+`<leader>tb` toggles Blackout and Normal. For Terminal, run:
+
+```vim
+:lua require("theme-switcher").set_background("terminal")
+```
+
+The mode stays when you change the theme. Blackout and Terminal also change each part of the screen that uses the theme background, for example the tab line, the statusline, popups and menus.
 
 ### Persistence
 
