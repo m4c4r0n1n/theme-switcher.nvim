@@ -1,43 +1,34 @@
-## UPDATES!!!
-
-I've fixed a few blackout issues on here, if you use this with another config other than Nananvim, let me know if you have any issues and I will do my best to resolve them. Thanks!
-
-Latest:
-- `j`, `k`, `G` and `q` work in the picker again
-- It remembers the exact variant you pick (rose-pine-dawn stays dawn after a restart)
-- No message on every move, only one when you apply a theme
-- Blackout now covers the tab line, statusline, popups and menus too
-- Your saved theme loads right away, no flash of the default theme on startup
-- No more error on the first save of a fresh install
-- Pick a theme and every open Neovim switches with it (background mode too)
-- `:ThemeSwitch` lets your desktop change the theme in every open Neovim
+<div align="center">
 
 # theme-switcher.nvim
 
+**A simple theme picker for Neovim.** Every installed colorscheme in one float, with live preview.
+
+<a href="https://github.com/neovim/neovim/releases"><img alt="Neovim 0.10+" src="https://img.shields.io/badge/Neovim-0.10%2B-c4a7e7?logo=neovim&logoColor=e0def4&style=for-the-badge&labelColor=232136" /></a>
+<a href="https://github.com/m4c4r0n1n/theme-switcher.nvim/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/m4c4r0n1n/theme-switcher.nvim?logo=git&logoColor=e0def4&color=f6c177&style=for-the-badge&labelColor=232136" /></a>
+<a href="https://github.com/m4c4r0n1n/theme-switcher.nvim/commits/main"><img alt="Maintained: yes" src="https://img.shields.io/badge/Maintained%3F-yes-9ccfd8?style=for-the-badge&labelColor=232136" /></a>
+<a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/m4c4r0n1n/theme-switcher.nvim?color=ea9a97&style=for-the-badge&labelColor=232136" /></a>
 <a href="https://ko-fi.com/koifist"><img alt="Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-eb6f92?logo=kofi&logoColor=e0def4&style=for-the-badge&labelColor=232136" /></a>
 
-<img width="1718" height="1400" alt="image" src="https://github.com/user-attachments/assets/4b81444e-592f-4682-b790-741d451df243" />
+</div>
 
+<img width="1718" height="1400" alt="theme-switcher picker" src="https://github.com/user-attachments/assets/4b81444e-592f-4682-b790-741d451df243" />
 
-A simple, static theme picker for Neovim. Browse all available colorschemes in a floating window with a moving highlight.
+Built for [nananvim](https://github.com/m4c4r0n1n/nananvim). Works in any config.
 
 ## Features
 
-- **All themes**: Shows every colorscheme installed on your system
-- **Static list**: Theme names stay in place, only the highlight moves
-- **Search/filter**: Press `/` to filter themes by typing
-- **Live preview**: See themes as you navigate
-- **Fast navigation**: j/k, arrows, gg/G
-- **Background modes**: Blackout (theme text on pure black), the theme's own background, or transparent
-- **Persistent**: Saves your theme and background choice and applies them on restart
-- **Synced**: Every open Neovim follows the theme and background you pick
-- **Simple**: No dependencies, just works
+- 🎨 **All themes**: every installed colorscheme, in a static sorted list
+- 👀 **Live preview**: the theme changes as you move
+- 🔍 **Search**: `/` filters the list as you type
+- 🌑 **Background modes**: blackout (pure black), the theme's own background, or transparent
+- 💾 **Persistent**: your theme and background come back on restart
+- 🔗 **Synced**: every open Neovim follows your pick
+- 🪶 **No dependencies**
 
 ## Installation
 
-### lazy.nvim
-
-This is the spec [nananvim](https://github.com/m4c4r0n1n/nananvim) uses:
+[lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
@@ -47,10 +38,10 @@ This is the spec [nananvim](https://github.com/m4c4r0n1n/nananvim) uses:
     require("theme-switcher").setup({
       width = 50,
       height = 25,
-      border = "rounded", -- "rounded", "solid", "double", "none"
-      default_bg = "blackout", -- "normal", "terminal" or "blackout" (before you pick one)
-      exclude = {}, -- colorscheme names to hide, for example { "rose-pine-main" }
-      sync = true, -- other open Neovim instances follow your theme and background
+      border = "rounded",      -- "rounded" | "solid" | "double" | "none"
+      default_bg = "blackout", -- "normal" | "terminal" | "blackout"
+      exclude = {},            -- themes to hide, for example { "rose-pine-main" }
+      sync = true,             -- other open Neovims follow your pick
     })
   end,
   keys = {
@@ -60,71 +51,54 @@ This is the spec [nananvim](https://github.com/m4c4r0n1n/nananvim) uses:
 }
 ```
 
-Load it at startup (`lazy = false`). It applies your saved theme and background when Neovim starts.
+Keep `lazy = false`. It applies your saved theme at startup.
 
-## Usage
+## Keys
 
-### Keybindings
+| Key | Does |
+| --- | --- |
+| `<leader>th` | Open the picker |
+| `<leader>tb` | Toggle blackout and the theme background |
 
-- `<leader>th` - Open the theme switcher (pick colorscheme)
-- `<leader>tb` - Toggle blackout and the theme's own background
+**In the picker**
 
-### Inside the Theme Picker
+| Key | Does |
+| --- | --- |
+| `j` / `k`, `<Down>` / `<Up>` | Move and preview |
+| `gg` / `G` | Top / bottom |
+| `/` | Search. `<BS>` deletes, `<Esc>` or `<CR>` stops, `<C-c>` clears |
+| `<CR>` / `<Space>` | Apply and close |
+| `p` | Preview |
+| `q` / `<Esc>` | Close. The preview stays |
 
-**Navigation:**
-- `j` / `<Down>` - Move down
-- `k` / `<Up>` - Move up
-- `gg` - Jump to top
-- `G` - Jump to bottom
+## Background modes
 
-**Search:**
-- `/` - Enter search mode (start typing to filter themes)
-- Type any letters/numbers to filter the list
-- `<BS>` - Delete last character
-- `<Esc>` - Exit search mode
-- `<Enter>` - Exit search mode (when in search)
-- `<C-c>` - Clear search completely
+- **Blackout**: pure black with the theme's text colors
+- **Normal**: the theme's own background
+- **Terminal**: transparent, your terminal shows through
 
-**Actions:**
-- `<Enter>` / `<Space>` - Apply theme and close
-- `p` - Preview theme (moving the selection also previews)
-- `q` / `<Esc>` - Close picker (the previewed theme stays)
-
-## How it works
-
-### Theme Switcher (`<leader>th`)
-
-1. Gathers **ALL** installed colorschemes using `getcompletion()`
-2. Shows them in a sorted, static list
-3. Press `/` to search/filter by typing theme names
-4. Highlights the current selection
-5. Previews themes as you navigate (j/k)
-6. Apply with Enter
-
-### Background modes (`<leader>tb`)
-
-1. **Blackout**: pure black (#000000) background with the theme's text colors
-2. **Normal**: the theme's own background
-3. **Terminal**: transparent, your terminal shows through
-
-`<leader>tb` toggles Blackout and Normal. For Terminal, run:
+`<leader>tb` toggles blackout and normal. For terminal:
 
 ```vim
 :lua require("theme-switcher").set_background("terminal")
 ```
 
-The mode stays when you change the theme. Blackout and Terminal also change each part of the screen that uses the theme background, for example the tab line, the statusline, popups and menus.
+The mode stays when you change the theme. Blackout and terminal also cover the tab line, statusline, popups and menus.
 
-### Desktop sync
+## Desktop sync
 
-`:ThemeSwitch <theme> [mode]` applies a theme (and a background mode) in every open Neovim and saves it. Call it from the script your desktop runs when you change its theme:
+`:ThemeSwitch <theme> [mode]` applies a theme in every open Neovim and saves it. Run it from your desktop theme script:
 
 ```bash
 nvim --headless "+ThemeSwitch rose-pine-dawn normal" +qa
 ```
 
-The mode is optional: `normal`, `terminal` or `blackout`. Tab completes both.
+The mode is optional. `<Tab>` completes both.
 
-### Persistence
+## Persistence
 
-Your theme and background choices are automatically saved to `~/.local/share/nvim/theme_switcher_prefs.json` and restored when you restart nvim.
+Saved to `~/.local/share/nvim/theme_switcher_prefs.json`.
+
+## License
+
+MIT
