@@ -14,6 +14,8 @@ Latest:
 
 # theme-switcher.nvim
 
+<a href="https://ko-fi.com/koifist"><img alt="Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-eb6f92?logo=kofi&logoColor=e0def4&style=for-the-badge&labelColor=232136" /></a>
+
 <img width="1718" height="1400" alt="image" src="https://github.com/user-attachments/assets/4b81444e-592f-4682-b790-741d451df243" />
 
 
