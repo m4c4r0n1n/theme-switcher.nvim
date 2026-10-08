@@ -94,6 +94,10 @@ local function sync_others()
       end, 1000)
     end
   end
+  -- A headless instance (a desktop script) can quit at once. Let the messages go out first.
+  if #vim.api.nvim_list_uis() == 0 then
+    vim.wait(300)
+  end
 end
 
 -- ── Background modes ────────────────────────────────────────────────────────
@@ -223,6 +227,24 @@ function M.setup(opts)
       on_colorscheme()
     end
   end)
+
+  -- :ThemeSwitch <theme> [mode]
+  vim.api.nvim_create_user_command("ThemeSwitch", function(args)
+    M.apply(args.fargs[1], args.fargs[2])
+  end, {
+    nargs = "+",
+    desc = "Apply a theme (and a background mode) in all open Neovim instances",
+    complete = function(arglead, line)
+      local words = #vim.split(vim.trim(line), "%s+")
+      if line:match("%s$") then
+        words = words + 1
+      end
+      local list = words <= 2 and vim.fn.getcompletion("", "color") or { "normal", "terminal", "blackout" }
+      return vim.tbl_filter(function(item)
+        return item:find(arglead, 1, true) == 1
+      end, list)
+    end,
+  })
 end
 
 -- Toggle between blackout (theme text on pure black) and the theme background.
@@ -263,6 +285,27 @@ function M.sync_receive(theme, mode)
   if theme then
     pcall(vim.cmd.colorscheme, theme)
   end
+end
+
+-- Apply a theme (and a mode), save them and send them to the other instances.
+-- A desktop script can call it: nvim --headless "+ThemeSwitch <theme> [mode]" +qa
+function M.apply(theme, mode)
+  if mode and not mode_names[mode] then
+    vim.notify("Invalid background mode. Use 'normal', 'terminal', or 'blackout'", vim.log.levels.ERROR)
+    return false
+  end
+  if mode then
+    M.state.bg_mode = mode
+  end
+  local ok, err = pcall(vim.cmd.colorscheme, theme)
+  if not ok then
+    vim.notify("Failed to apply theme: " .. tostring(theme) .. "\n" .. tostring(err), vim.log.levels.ERROR)
+    return false
+  end
+  M.state.current_theme = theme
+  save_preferences()
+  sync_others()
+  return true
 end
 
 -- ── Picker ──────────────────────────────────────────────────────────────────

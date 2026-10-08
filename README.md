@@ -10,6 +10,7 @@ Latest:
 - Your saved theme loads right away, no flash of the default theme on startup
 - No more error on the first save of a fresh install
 - Pick a theme and every open Neovim switches with it (background mode too)
+- `:ThemeSwitch` lets your desktop change the theme in every open Neovim
 
 # theme-switcher.nvim
 
@@ -111,6 +112,16 @@ Load it at startup (`lazy = false`). It applies your saved theme and background 
 ```
 
 The mode stays when you change the theme. Blackout and Terminal also change each part of the screen that uses the theme background, for example the tab line, the statusline, popups and menus.
+
+### Desktop sync
+
+`:ThemeSwitch <theme> [mode]` applies a theme (and a background mode) in every open Neovim and saves it. Call it from the script your desktop runs when you change its theme:
+
+```bash
+nvim --headless "+ThemeSwitch rose-pine-dawn normal" +qa
+```
+
+The mode is optional: `normal`, `terminal` or `blackout`. Tab completes both.
 
 ### Persistence
 
