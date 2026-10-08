@@ -10,6 +10,8 @@ M.config = {
   default_bg = "normal",
   -- Colorscheme names to hide from the picker.
   exclude = {},
+  -- Send the theme and the background mode to the other open Neovim instances.
+  sync = true,
 }
 
 M.state = {
@@ -49,6 +51,49 @@ local function save_preferences()
   vim.fn.mkdir(vim.fn.fnamemodify(prefs_file, ":h"), "p")
   local prefs = { theme = theme_name(), bg_mode = M.state.bg_mode }
   vim.fn.writefile({ vim.json.encode(prefs) }, prefs_file)
+end
+
+-- ── Sync ────────────────────────────────────────────────────────────────────
+
+-- The server sockets of the other Neovim instances of this user. They are in
+-- the folder of this socket, or (without XDG_RUNTIME_DIR) in folders beside it.
+local function other_servers()
+  local own = vim.v.servername
+  if own == "" then
+    return {}
+  end
+  local dir = vim.fn.fnamemodify(own, ":h")
+  local found = vim.fn.glob(dir .. "/nvim.*", true, true)
+  vim.list_extend(found, vim.fn.glob(vim.fn.fnamemodify(dir, ":h") .. "/*/nvim.*", true, true))
+  local servers, seen = {}, { [own] = true }
+  for _, path in ipairs(found) do
+    local stat = vim.uv.fs_stat(path)
+    if not seen[path] and stat and stat.type == "socket" then
+      seen[path] = true
+      servers[#servers + 1] = path
+    end
+  end
+  return servers
+end
+
+-- Send the theme and the mode to the other instances. An instance without
+-- theme-switcher does nothing.
+local function sync_others()
+  if not M.config.sync then
+    return
+  end
+  local code = "local ok, ts = pcall(require, 'theme-switcher') "
+    .. "if ok and ts.sync_receive then ts.sync_receive(...) end"
+  for _, path in ipairs(other_servers()) do
+    local ok, chan = pcall(vim.fn.sockconnect, "pipe", path, { rpc = true })
+    if ok and chan > 0 then
+      vim.rpcnotify(chan, "nvim_exec_lua", code, { theme_name(), M.state.bg_mode })
+      -- Close the channel after the message goes out.
+      vim.defer_fn(function()
+        pcall(vim.fn.chanclose, chan)
+      end, 1000)
+    end
+  end
 end
 
 -- ── Background modes ────────────────────────────────────────────────────────
@@ -205,6 +250,19 @@ function M.set_background(mode)
   end
   vim.notify("Background: " .. mode_names[mode], vim.log.levels.INFO)
   save_preferences()
+  sync_others()
+end
+
+-- Apply a theme and a mode from a different instance. Do not save them (that
+-- instance saved them) and do not send them again.
+function M.sync_receive(theme, mode)
+  if mode_names[mode] then
+    M.state.bg_mode = mode
+  end
+  theme = theme or theme_name()
+  if theme then
+    pcall(vim.cmd.colorscheme, theme)
+  end
 end
 
 -- ── Picker ──────────────────────────────────────────────────────────────────
@@ -330,6 +388,9 @@ local function close_picker()
   end
   M.state.win = nil
   M.state.buf = nil
+  if theme_name() ~= M.state.opened_theme then
+    sync_others()
+  end
 end
 
 local function confirm_selection()
@@ -420,6 +481,7 @@ function M.open()
 
   -- Start on the current theme.
   M.state.current_line = 1
+  M.state.opened_theme = theme_name()
   local current = theme_name() or "default"
   for i, theme in ipairs(M.state.filtered_themes) do
     if theme == current then

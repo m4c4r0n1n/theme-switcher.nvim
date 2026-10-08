@@ -9,6 +9,7 @@ Latest:
 - Blackout now covers the tab line, statusline, popups and menus too
 - Your saved theme loads right away, no flash of the default theme on startup
 - No more error on the first save of a fresh install
+- Pick a theme and every open Neovim switches with it (background mode too)
 
 # theme-switcher.nvim
 
@@ -26,6 +27,7 @@ A simple, static theme picker for Neovim. Browse all available colorschemes in a
 - **Fast navigation**: j/k, arrows, gg/G
 - **Background modes**: Blackout (theme text on pure black), the theme's own background, or transparent
 - **Persistent**: Saves your theme and background choice and applies them on restart
+- **Synced**: Every open Neovim follows the theme and background you pick
 - **Simple**: No dependencies, just works
 
 ## Installation
@@ -45,6 +47,7 @@ This is the spec [nananvim](https://github.com/m4c4r0n1n/nananvim) uses:
       border = "rounded", -- "rounded", "solid", "double", "none"
       default_bg = "blackout", -- "normal", "terminal" or "blackout" (before you pick one)
       exclude = {}, -- colorscheme names to hide, for example { "rose-pine-main" }
+      sync = true, -- other open Neovim instances follow your theme and background
     })
   end,
   keys = {
